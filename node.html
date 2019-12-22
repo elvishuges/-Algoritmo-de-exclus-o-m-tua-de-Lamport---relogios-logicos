@@ -1,0 +1,155 @@
+<html lang="en">
+<head>
+
+<title>Node -- Lamport Mutual Exclusion algorithm</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta http-equiv="Content-Language" content="en-us">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/simple-peer/9.6.2/simplepeer.min.js"></script>
+<script src="https://unpkg.com/peerjs@1.0.0/dist/peerjs.min.js"></script>
+<script src="../common.js"></script>
+
+<script type="text/javascript">
+
+var my_id;
+var clock = 0;             /* Lamport logical clock */
+var queue = new Array();   /* incoming requests */
+var resource_busy = false; /* is it available?  */
+var connection;            /* we need it globally for the button, etc */
+
+/* Need to run on site load */
+window.onload = function() {
+  /* connect with the server */
+  //var peer = new Peer({key: '5bk60iq1kgvcayvi', debug: 3});
+  var peer = new Peer();
+
+  var conn = peer.connect("servidor");
+  conn.on('open', function() {
+    /* wave to server */
+    conn.send("ola servidor");
+    /* set up message handlers */
+    conn.on('data', function(data) {
+      if (isFinite(data)) {
+        /* we got our unique id */
+        my_id = data;
+        addLog("Estou na rede. [id: " + my_id + "]");
+        updateClock();
+      } else {
+        /* we got an object */
+        if (data.msg == "req") {
+          queue.push({id: data.id, lc: data.lc});
+          addLog(data.id + " obteve o recurso. Droga !!.");
+        } else if (data.msg == "release") {
+          release(data.id);
+        } else {
+          alert("Node: Wrong message type");
+        }
+        /* ...finaly */
+        updateClock(data.lc);
+      }
+    });
+    /* We have the button for handling the decision of whether or not we want access */
+    connection = conn;
+  });
+}
+
+/*
+ * Requests access to the shared resource
+ */
+var request = function requestF() {
+  addLog("Quero acessar.");
+  /* adding to my own queue */
+  queue.push({id: my_id, lc: clock});
+  /* and sending it over to all the rest */
+  connection.send({msg: "req", id: my_id, lc: clock});
+  updateClock();
+}
+
+/*
+ * Updates the global Lamport logical clock based on a new one
+ * Optional argument: a new clock
+ */
+var updateClock = function updateClockF(new_clock) {
+  if (typeof new_clock === "undefined") {
+    clock += 1;
+  } else {
+    clock = max(clock, new_clock) + 1;
+  }
+  /* since clock 'ticks' often, we add queue checking here. */
+  check();
+}
+
+/*
+ * Finds the request with the smallest logical clock in the global priority queue
+ * I know I can use Math.max and Array.indexOf but I think this one is faster
+ * Caution: Requires a non-empty queue !!
+ */
+var findNext = function findNextF() {
+  /* queue is an array of requests in the form of: { id: <ID>, lc: <CLOCK> } */
+  var m_index = 0;
+
+  var m = queue.length;
+  for (var j = 1; j < m; j += 1) {
+    if (queue[j].lc < queue[m_index].lc) {
+      m_index = j;
+    }
+  }
+  return m_index;
+}
+
+/*
+ * Checks for pending request and serve if possible
+ */
+var check = function checkF() {
+  if (queue.length == 0) {
+    return -1;
+  }
+
+  if (!resource_busy) {
+    var next = findNext();
+    resource_busy = true;
+    if (queue[next].id == my_id) {
+      /*
+       * The resource is MINE !!! Just use it for a bit...
+       * We don't need to announce it, since all nodes already know who deserves it
+       */
+      //addLog("Resource is mine.");
+	  addLog("Obtendo o recurso.");
+      setTimeout(function() {
+        addLog("Deixando o recurso.");
+        connection.send({msg: "release", id: my_id, lc: clock});
+        release(my_id);
+      }, 3000);
+      /* ~~~~ <-- resource is used for 3 seconds. Changeable if desired. */
+    }
+  }
+  return 0;
+}
+
+/*
+ * Removes the request from the global priotity queue
+ */
+var release = function releaseF(id) {
+  var m = queue.length;
+  for (var j = 0; j < m; j += 1) {
+    if (queue[j].id == id) {
+      /*
+       * In our implementation a process can't ask for the resource twice,
+       * so we don't need to check for the logical clock here.
+       * But implementing that would be easy.
+       */
+      queue.splice(j, 1);
+      resource_busy = false;
+      addLog(id + " deixou o recurso. o recurso está disponível.");
+      break;
+    }
+  }
+}
+
+</script>
+</head>
+
+<body>
+  <input type="button" value="request" onclick="request();"/>
+  <div id="logscontainer" style="width:500px;"></div>
+</body>
+</html>

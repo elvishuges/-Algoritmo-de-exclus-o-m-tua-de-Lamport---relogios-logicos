@@ -1,0 +1,66 @@
+<html lang="en">
+<head>
+
+<title>Resource and Topology Server -- Lamport Mutual Exclusion algorithm</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta http-equiv="Content-Language" content="en-us">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/simple-peer/9.6.2/simplepeer.min.js"></script>
+<script src="https://unpkg.com/peerjs@1.0.0/dist/peerjs.min.js"></script>
+<script src="../common.js"></script>
+
+<script type="text/javascript">
+
+var i;                     /* generic counter */
+var peer;                  /* peer group      */
+var count = 0;             /* peers counter   */
+var conns = new Object();  /* generic object to save connections */
+
+/*
+ * Assumptions:
+ *   - The network should be asynchronous.
+ *   - Our channels are consistent, reliable and FIFO.
+ */
+
+/* We will just be the mediator on the network. Start on site load */
+window.onload = function() {
+  /* open a group (Debug mode on) */
+  peer = new Peer("servidor");
+  peer.on('connection', function(conn) {
+    /* on received data */
+    conn.on('data', function(data) {
+      if (data == "ola servidor") {
+        /* We got a greeting message, which means we have one more peer */
+        addLog("Peer conectado. [id: " + count + "]");
+        conns[count] = conn;  /* keeping the connection for later */
+        conn.send(count);     /* reply with the counter for the unique id */
+        //conn.send(count);     /* reply with the counter for the unique id */ // comentei esse parte. se der erro descomenta
+        count++;
+      } else if (data.hasOwnProperty("msg")) {
+        /* Normal server operation */
+        if (data.msg == "req" || data.msg == "release") {
+          /* forwarding request to all the 'other' processes */
+          i = count;
+          while (i--) {
+            if (i != data.id) {
+              conns[i].send(data);
+            }
+          }
+        } else {
+          alert("Error: Unknown type of message");
+        }
+      } else {
+        alert("Error: Can't handle received message");
+      }
+    });
+  });
+
+  addLog("Servidor Pronto!!");
+}
+
+</script>
+</head>
+
+<body>
+  <div id="logscontainer" style="width:500px;"></div>
+</body>
+</html>
